@@ -1,0 +1,83 @@
+import argparse
+import pandas as pd
+import matplotlib.pyplot as plt
+from collections import Counter
+import os
+
+def validate_jira_fields(jira_data):
+    results = []
+    field_issues = Counter()
+    for issue in jira_data:
+        issue_result = {
+            "JIRA": issue["key"],
+            "Summary": issue["summary"],
+            "Missing": []
+        }
+
+        # Check for Code Commit Link
+        if not issue.get("commit_link"):
+            issue_result["Missing"].append("Code Commit Link")
+            field_issues["Code Commit Link"] += 1
+
+        # Check for Required Subtasks
+        required_subtasks = {"Unit Test", "Peer Review", "Functional Test"}
+        missing_subtasks = required_subtasks - set(issue.get("subtasks", []))
+        for task in missing_subtasks:
+            issue_result["Missing"].append(f"Sub-task: {task}")
+            field_issues[f"Sub-task: {task}"] += 1
+
+        # Check for Test Case Attachment
+        if not issue.get("test_attachment"):
+            issue_result["Missing"].append("Test Case Attachment")
+            field_issues["Test Case Attachment"] += 1
+
+        # Check for qTest Link
+        if not issue.get("qtest_link"):
+            issue_result["Missing"].append("qTest Link")
+            field_issues["qTest Link"] += 1
+
+        results.append(issue_result)
+    return results, field_issues
+
+def generate_dashboard(field_issues):
+    labels, sizes = zip(*field_issues.items())
+    fig, ax = plt.subplots()
+    ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90)
+    ax.axis('equal')
+    chart_path = "dashboard_pie_chart.png"
+    plt.savefig(chart_path)
+    return chart_path
+
+def generate_html_report(results, chart_path):
+    html = "<h2>JIRA Validation Report</h2>"
+    html += '<table border="1" cellpadding="5" cellspacing="0">'
+    html += "<tr><th>JIRA</th><th>Summary</th><th>Missing Items</th></tr>"
+    for res in results:
+        html += f"<tr><td>{res['JIRA']}</td><td>{res['Summary']}</td><td>{', '.join(res['Missing'])}</td></tr>"
+    html += "</table>"
+    html += f"<br><img src='{chart_path}' width='400'/>"
+
+    with open("jira_validation_report.html", "w") as f:
+        f.write(html)
+
+    print("HTML report saved as jira_validation_report.html")
+
+def run_validation():
+    # Replace with actual API integration or data source
+    jira_data = [
+        {"key": "SPK-101", "summary": "Missing commit", "subtasks": ["Peer Review"], "test_attachment": True, "qtest_link": ""},
+        {"key": "SPK-102", "summary": "Complete story", "commit_link": "http://repo/commit/123", "subtasks": ["Unit Test", "Peer Review", "Functional Test"], "test_attachment": True, "qtest_link": "http://qtest/link"},
+        {"key": "SPK-103", "summary": "No test case", "commit_link": "http://repo/commit/456", "subtasks": ["Unit Test"], "test_attachment": False, "qtest_link": ""},
+    ]
+
+    results, field_issues = validate_jira_fields(jira_data)
+    chart_path = generate_dashboard(field_issues)
+    generate_html_report(results, chart_path)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--project-id1", required=True)
+    parser.add_argument("--project-id2")
+    parser.add_argument("--mail-group", required=True)
+    args = parser.parse_args()
+    run_validation()
