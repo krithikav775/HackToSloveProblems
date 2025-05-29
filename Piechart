@@ -1,0 +1,50 @@
+import argparse
+import pandas as pd
+import matplotlib.pyplot as plt
+from collections import Counter
+import os
+
+def run_validation(project_ids, mail_group):
+    print(f"Running validation for: {project_ids}")
+    print(f"Results will be emailed to: {mail_group}")
+
+    # Dummy JIRA data simulation
+    jira_data = [
+        {"JIRA": "SPK-101", "Summary": "Incomplete story", "Missing Fields": ["Acceptance Criteria", "Fix Version"]},
+        {"JIRA": "SPK-102", "Summary": "Another incomplete", "Missing Fields": ["Epic Link"]},
+        {"JIRA": "SPK-103", "Summary": "OK story", "Missing Fields": []},
+        {"JIRA": "SPK-104", "Summary": "Old one", "Missing Fields": ["Fix Version", "Design Detail", "Acceptance Criteria"]},
+    ]
+
+    # Flatten missing field counts
+    missing_fields = [field for issue in jira_data for field in issue["Missing Fields"]]
+    field_counts = Counter(missing_fields)
+
+    # Generate pie chart
+    if field_counts:
+        labels = field_counts.keys()
+        sizes = field_counts.values()
+
+        plt.figure(figsize=(8, 6))
+        plt.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
+        plt.title("Distribution of Missing Fields")
+        plt.axis('equal')  # Equal aspect ratio ensures pie is a circle.
+        pie_chart_path = os.path.join(os.getcwd(), "missing_fields_pie_chart.png")
+        plt.savefig(pie_chart_path)
+        plt.close()
+        print(f"Pie chart saved to {pie_chart_path}")
+    else:
+        print("No missing fields to chart.")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run JIRA field validation with pie chart.")
+    parser.add_argument("--project-id1", required=True, help="First JIRA project ID")
+    parser.add_argument("--project-id2", required=False, help="Second JIRA project ID (optional)")
+    parser.add_argument("--mail-group", required=True, help="Email distribution group")
+
+    args = parser.parse_args()
+    project_ids = [args.project_id1]
+    if args.project_id2:
+        project_ids.append(args.project_id2)
+
+    run_validation(project_ids, args.mail_group)
