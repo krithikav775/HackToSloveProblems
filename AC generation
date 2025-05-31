@@ -1,0 +1,71 @@
+import re
+
+def generate_generic_gwt(description: str) -> str:
+    if not description:
+        return "Description is missing."
+
+    description = description.strip().replace("\n", " ")
+
+    # Extended context patterns
+    context_patterns = [
+        r"(to|for|in order to|so that|due to|because of|as part of) (.*?)(\.|,|$)",
+        r"(to (improve|ensure|support|achieve|maintain|enhance|streamline|monitor|handle|prevent|automate|facilitate|increase|reduce|track|protect|document)) (.*?)(\.|,|$)",
+        r"(for (better|easy|seamless|robust|automated|secure|faster|simplified|compliant)) (.*?)(\.|,|$)",
+        r"(addressing|handling|resolving|preventing|fixing|removing) (.*?)(\.|,|$)",
+        r"(as a result of|in response to|in case of|with the aim of|to comply with) (.*?)(\.|,|$)"
+    ]
+
+    # Extended action patterns
+    action_patterns = [
+        r"(enable|add|introduce|allow|support|implement|trigger|permit|initiate|provide|schedule|build|develop|include|integrate|automate|validate|restrict|enhance|optimize|configure|remove|disable|create|delete|fix|update|modify|change|upgrade|migrate|refactor|replace|restructure|enforce|monitor|track|log|capture|handle|notify|report|retry|failover|document|assign|approve|reject|queue|cache|reload|sanitize|verify|persist|link|map|reconcile) (.*?)(\.|,|$)",
+        r"(adding|introducing|allowing|supporting|triggering|permitting|providing|scheduling|building|developing|including|integrating|automating|validating|restricting|enhancing|optimizing|configuring|removing|disabling|creating|deleting|fixing|updating|modifying|changing|upgrading|migrating|refactoring|replacing|restructuring|enforcing|monitoring|tracking|logging|capturing|handling|notifying|reporting|retrying|failing over|documenting|assigning|approving|rejecting|queuing|caching|reloading|sanitizing|verifying|persisting|linking|mapping|reconciling) (.*?)(\.|,|$)"
+    ]
+
+    context = "a business or technical need"
+    action = "a system process"
+    result = "the expected outcome is achieved"
+
+    # Match context
+    for pattern in context_patterns:
+        match = re.search(pattern, description, re.IGNORECASE)
+        if match:
+            context = match.group(2).strip()
+            break
+
+    # Match action
+    for pattern in action_patterns:
+        match = re.search(pattern, description, re.IGNORECASE)
+        if match:
+            action = match.group(2).strip()
+            break
+
+    # Result logic based on keywords
+    if "error" in context.lower() or "failure" in context.lower():
+        result = "errors are handled appropriately"
+    elif "performance" in context.lower():
+        result = "system performance is improved"
+    elif "security" in context.lower():
+        result = "security risks are mitigated"
+    elif "logging" in action.lower():
+        result = "logs are generated and available for audit"
+    elif "notification" in action.lower():
+        result = "notifications are sent as expected"
+    elif "retry" in action.lower():
+        result = "the process is retried automatically"
+    else:
+        result = f"{action} is executed successfully"
+
+    # Clean up extracted text
+    context = re.sub(r'[^\w\s]', '', context)
+    action = re.sub(r'[^\w\s]', '', action)
+    result = re.sub(r'[^\w\s]', '', result)
+
+    return f"""*Generated Acceptance Criteria:*
+Given the need to {context},
+When {action} is triggered,
+Then {result}."""
+
+# Example usage
+if __name__ == "__main__":
+    sample = "Automate report generation to reduce manual effort and improve efficiency."
+    print(generate_generic_gwt(sample))
