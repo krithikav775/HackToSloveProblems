@@ -1,0 +1,90 @@
+import re
+import random
+
+# Improved context and action patterns
+context_patterns = [
+    r"(to|for|in order to|so that|due to|because of|as part of) (.*?)(\.|,|$)",
+    r"(to (reduce|improve|support|automate|enhance|monitor|avoid|handle|streamline|increase|enable|simplify|validate|maintain|resolve)) (.*?)(\.|,|$)",
+    r"(for (better|easy|secure|compliant|faster|reliable)) (.*?)(\.|,|$)"
+]
+
+action_patterns = [
+    r"(generate|collect|retrieve|upload|download|send|receive|display|calculate|validate|verify|create|delete|update|modify|check|execute|run|retry|fail|notify|alert|authenticate|authorize|encrypt|decrypt|transform|convert|map|persist|fetch|query|log|monitor|backup|restore|trigger|restrict|enforce|sanitize|document|assign|approve|reject|link|schedule) (.*?)(\.|,|$)",
+    r"(adding|introducing|allowing|supporting|triggering|removing|replacing|configuring|scheduling|enforcing|handling|notifying|retrying|logging|monitoring|queuing|assigning|approving|rejecting) (.*?)(\.|,|$)"
+]
+
+# Action -> outcome mapping (optional, could expand this)
+action_to_result_map = {
+    "generate": "the output is successfully generated",
+    "validate": "data is validated and verified",
+    "upload": "files are uploaded correctly",
+    "download": "the file is downloaded successfully",
+    "notify": "notifications are sent to the user",
+    "log": "an audit trail is created",
+    "retry": "the operation is retried automatically",
+    "create": "the new entry is created successfully",
+    "delete": "the data is removed from the system",
+    "update": "the changes are saved successfully"
+}
+
+# Template variations
+when_templates = [
+    "When the system executes {action}",
+    "When the system performs {action}",
+    "When the system processes {action}",
+    "When the system carries out {action}"
+]
+
+then_templates = [
+    "Then {result}",
+    "Then the system ensures that {result}",
+    "Then it leads to a state where {result}"
+]
+
+def generate_generic_gwt(description: str) -> str:
+    if not description:
+        return "Description is missing."
+
+    description = description.strip().replace("\n", " ")
+
+    context = "a business or technical need"
+    action = "a system process"
+    result = "the process completes successfully"
+
+    # Match context
+    for pattern in context_patterns:
+        match = re.search(pattern, description, re.IGNORECASE)
+        if match:
+            context = match.group(2).strip()
+            break
+
+    # Match action
+    for pattern in action_patterns:
+        match = re.search(pattern, description, re.IGNORECASE)
+        if match:
+            action = match.group(0).strip()
+            action_verb = match.group(1).strip().lower()
+            break
+    else:
+        action_verb = "process"
+
+    # Determine result
+    result = action_to_result_map.get(action_verb, f"{action} is completed successfully")
+
+    # Clean text
+    context = re.sub(r'[^\w\s-]', '', context)
+    action = re.sub(r'[^\w\s-]', '', action)
+    result = re.sub(r'[^\w\s-]', '', result)
+
+    when_phrase = random.choice(when_templates).format(action=action)
+    then_phrase = random.choice(then_templates).format(result=result)
+
+    return f"""*Generated Acceptance Criteria:*
+Given the need to {context},
+{when_phrase},
+{then_phrase}."""
+
+# Example
+if __name__ == "__main__":
+    test_description = "To improve security, implement audit logging to capture all changes made by admin users."
+    print(generate_generic_gwt(test_description))
