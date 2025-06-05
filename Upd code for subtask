@@ -1,0 +1,133 @@
+import requests
+import datetime
+import pandas as pd
+from requests.auth import HTTPBasicAuth
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
+
+# ========== CONFIG ==========
+JIRA_BASE_URL = "https://your-domain.atlassian.net"
+USERNAME = "your-email@example.com"
+API_TOKEN = "your-api-token"
+auth = HTTPBasicAuth(USERNAME, API_TOKEN)
+headers = {
+    "Accept": "application/json",
+    "Content-Type": "application/json"
+}
+
+# ========== FUNCTIONS ==========
+
+def get_jira_issues(project_ids, fix_version=None):
+    all_issues = []
+
+    for project_id in project_ids:
+        jql = f'project = {project_id} AND status NOT IN ("Closed", "Open")'
+        if fix_version:
+            jql += f' AND fixVersion = "{fix_version}"'
+        
+        url = f"{JIRA_BASE_URL}/rest/api/3/search"
+        params = {
+            "jql": jql,
+            "fields": "summary,description,created,comment,subtasks,status"
+        }
+
+        response = requests.get(url, headers=headers, auth=auth, params=params)
+        if response.status_code != 200:
+            print(f"Error fetching JIRA data for {project_id}: {response.status_code}")
+            continue
+
+        data = response.json()
+        for issue in data["issues"]:
+            fields = issue["fields"]
+            key = issue["key"]
+            summary = fields["summary"]
+            created = datetime.datetime.strptime(fields["created"][:10], "%Y-%m-%d")
+            age_days = (datetime.datetime.now() - created).days
+            age_group = "More than 60 days" if age_days > 60 else "Less than 60 days"
+
+            # Validate Acceptance Criteria
+            comments = fields.get("comment", {}).get("comments", [])
+            comment_texts = [
+                c["body"]["content"][0]["content"][0].get("text", "")
+                for c in comments
+                if c["body"]["content"]
+            ]
+            bad_ac = [c for c in comment_texts if not all(word in c.lower() for word in ["given", "when", "then"])]
+            ac_status = "Invalid" if bad_ac else "Valid"
+
+            # Check Sub-tasks
+            required_tasks = {
+                "Functional Testing": None,
+                "Unit Testing": None,
+                "Peer Review": None
+            }
+            for subtask in fields.get("subtasks", []):
+                subtask_summary = subtask["fields"]["summary"].lower()
+                subtask_key = subtask["key"]
+
+                for task in required_tasks:
+                    if task.lower() in subtask_summary:
+                        # Fetch sub-task status
+                        sub_url = f"{JIRA_BASE_URL}/rest/api/3/issue/{subtask_key}"
+                        sub_resp = requests.get(sub_url, headers=headers, auth=auth)
+                        if sub_resp.status_code == 200:
+                            sub_status = sub_resp.json()["fields"]["status"]["name"]
+                            required_tasks[task] = sub_status
+
+            subtask_issues = []
+            for task, status in required_tasks.items():
+                if not status:
+                    subtask_issues.append(f"{task} sub-task missing")
+                elif status.lower() != "closed":
+                    subtask_issues.append(f"{task} sub-task not closed (Status: {status})")
+
+            # Final validation summary
+            invalid_reasons = []
+            if ac_status == "Invalid":
+                invalid_reasons.append("AC not in Given-When-Then format")
+            invalid_reasons.extend(subtask_issues)
+
+            if invalid_reasons:
+                all_issues.append({
+                    "Project": project_id,
+                    "Key": key,
+                    "Summary": summary,
+                    "Age Group": age_group,
+                    "Invalid Reasons": "; ".join(invalid_reasons)
+                })
+
+    return all_issues
+
+def generate_excel(issues, filename="jira_validation.xlsx"):
+    df = pd.DataFrame(issues)
+    writer = pd.ExcelWriter(filename, engine="openpyxl")
+    df.to_excel(writer, index=False, sheet_name="Invalid Issues")
+
+    # Style: highlight 'Invalid Reasons' column
+    wb = writer.book
+    ws = wb["Invalid Issues"]
+    red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+
+    for col in ws.iter_cols(min_col=5, max_col=5, min_row=2):
+        for cell in col:
+            if cell.value:
+                cell.fill = red_fill
+    writer.save()
+    print(f"Excel report saved to {filename}")
+
+# ========== MAIN ==========
+def main():
+    print("Enter comma-separated project IDs (e.g., SPK,ABC): ")
+    projects = input().split(",")
+    print("Enter fix version (optional, press Enter to skip): ")
+    fix_version = input().strip() or None
+
+    issues = get_jira_issues(projects, fix_version)
+    generate_excel(issues)
+
+    print(f"\nFound {len(issues)} invalid JIRA issues.")
+    for issue in issues:
+        print(f"- {issue['Key']}: {issue['Invalid Reasons']}")
+
+if __name__ == "__main__":
+    main()
