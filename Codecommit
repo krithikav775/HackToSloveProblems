@@ -1,0 +1,123 @@
+import requests
+import pandas as pd
+from requests.auth import HTTPBasicAuth
+from datetime import datetime, timedelta
+from dateutil import parser
+
+# --- Configuration ---
+JIRA_BASE_URL = "https://your-domain.atlassian.net"
+EMAIL = "your-email@yourcompany.com"
+API_TOKEN = "your-api-token"
+REQUIRED_FIELDS = ["summary", "description", "assignee", "reporter", "priority"]
+EXCLUDED_STATUSES = ["Closed", "Open"]
+
+auth = HTTPBasicAuth(EMAIL, API_TOKEN)
+headers = {"Accept": "application/json"}
+
+# --- Helpers ---
+def get_issue_id(issue_key):
+    url = f"{JIRA_BASE_URL}/rest/api/3/issue/{issue_key}"
+    res = requests.get(url, headers=headers, auth=auth)
+    return res.json().get("id")
+
+def has_commits(issue_key):
+    issue_id = get_issue_id(issue_key)
+    if not issue_id:
+        return False
+
+    url = f"{JIRA_BASE_URL}/rest/dev-status/1.0/issue/detail"
+    params = {
+        "issueId": issue_id,
+        "applicationType": "github",  # or 'bitbucket', 'stash'
+        "dataType": "repository"
+    }
+
+    res = requests.get(url, headers=headers, params=params, auth=auth)
+    if res.status_code != 200:
+        return False
+
+    details = res.json().get("detail", [])
+    for detail in details:
+        for repo in detail.get("repositories", []):
+            if repo.get("commits"):
+                return True
+    return False
+
+def is_valid_acceptance_criteria(comment_body):
+    return all(kw in comment_body.lower() for kw in ["given", "when", "then"])
+
+# --- Main Process ---
+def fetch_and_validate_issues(project_keys, fix_version=None):
+    all_issues = []
+
+    for project_key in project_keys:
+        jql = f'project = {project_key} AND status NOT IN ({",".join(EXCLUDED_STATUSES)})'
+        if fix_version:
+            jql += f' AND fixVersion = "{fix_version}"'
+
+        url = f"{JIRA_BASE_URL}/rest/api/3/search"
+        params = {"jql": jql, "maxResults": 100}
+        res = requests.get(url, headers=headers, params=params, auth=auth)
+        issues = res.json().get("issues", [])
+
+        for issue in issues:
+            fields = issue["fields"]
+            issue_key = issue["key"]
+            created = parser.parse(fields["created"])
+
+            invalid_fields = []
+            for f in REQUIRED_FIELDS:
+                if not fields.get(f):
+                    invalid_fields.append(f)
+
+            # Acceptance Criteria check from comments
+            url_c = f"{JIRA_BASE_URL}/rest/api/3/issue/{issue_key}/comment"
+            res_c = requests.get(url_c, headers=headers, auth=auth)
+            comments = res_c.json().get("comments", [])
+            ac_comment = next((c for c in comments if "acceptance" in c["body"].lower()), None)
+
+            ac_format_ok = is_valid_acceptance_criteria(ac_comment["body"]) if ac_comment else False
+            if not ac_format_ok:
+                invalid_fields.append("Acceptance Criteria not in Given-When-Then")
+
+            # Age check
+            age = (datetime.now() - created).days
+            age_bucket = ">60 days" if age > 60 else "<=60 days"
+
+            # Commit check
+            commit_status = "Yes" if has_commits(issue_key) else "No"
+            if commit_status == "No":
+                invalid_fields.append("No Code Commit")
+
+            if invalid_fields:
+                all_issues.append({
+                    "Project": project_key,
+                    "Key": issue_key,
+                    "Summary": fields.get("summary"),
+                    "Created": created.date(),
+                    "Age": age,
+                    "Age Bucket": age_bucket,
+                    "Invalid Fields": ", ".join(invalid_fields),
+                    "Has Commit": commit_status
+                })
+
+    return all_issues
+
+# --- Output ---
+def generate_report(data, fix_version):
+    df = pd.DataFrame(data)
+    filename = f"JIRA_Validation_Report_{fix_version or 'All'}.xlsx"
+    df.to_excel(filename, index=False)
+
+    html_file = filename.replace(".xlsx", ".html")
+    df.to_html(html_file, index=False)
+    print(f"✅ Reports generated: {filename}, {html_file}")
+
+# --- Input and Run ---
+if __name__ == "__main__":
+    project_input = input("Enter comma-separated JIRA project keys: ")
+    fix_version = input("Enter Fix Version (press Enter to skip): ").strip() or None
+    project_keys = [p.strip().upper() for p in project_input.split(",")]
+
+    results = fetch_and_validate_issues(project_keys, fix_version)
+    generate_report(results, fix_version)
